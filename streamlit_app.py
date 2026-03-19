@@ -84,11 +84,17 @@ categoryの例:
 routeは交通費のみ（例:品川→熱海）。その他はnull。
 日付不明はnull、金額不明は0。JSONのみ返してください。"""
 
+    # PDFはdocumentタイプ、画像はimageタイプで送信
+    if ext == '.pdf':
+        content_block = {"type": "document", "source": {"type": "base64", "media_type": "application/pdf", "data": img_data}}
+    else:
+        content_block = {"type": "image", "source": {"type": "base64", "media_type": media_type, "data": img_data}}
+
     resp = client.messages.create(
         model="claude-opus-4-6",
         max_tokens=512,
         messages=[{"role": "user", "content": [
-            {"type": "image", "source": {"type": "base64", "media_type": media_type, "data": img_data}},
+            content_block,
             {"type": "text", "text": prompt}
         ]}]
     )
@@ -127,7 +133,7 @@ def write_sheet(ws, items: list, data_start: int, data_end: int, has_route: bool
 
         amt = item.get('amount', 0)
         ws.cell(row=row, column=3).value = amt if amt else None
-        ws.cell(row=row, column=3).number_format = '[\u00a5-411]#,##0'
+        ws.cell(row=row, column=3).number_format = '[$¥-411]#,##0'
         ws.cell(row=row, column=4).value = item.get('category', '')
         ws.cell(row=row, column=5).value = item.get('description', '')
 
@@ -285,4 +291,3 @@ st.markdown(
     '<p style="text-align:center; color:#aaa; font-size:12px;">Powered by Claude AI · 領収書の情報は外部に保存されません</p>',
     unsafe_allow_html=True
 )
-
