@@ -42,6 +42,15 @@ st.markdown("""
     border-radius: 10px;
     border: none;
 }
+.result-box {
+    background: #1e1e2e;
+    color: #a9b1d6;
+    border-radius: 10px;
+    padding: 16px;
+    font-family: monospace;
+    font-size: 13px;
+    white-space: pre-wrap;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -58,6 +67,7 @@ MEDIA_TYPES = {
 def extract_receipt_data(client, file_bytes: bytes, filename: str) -> dict:
     ext = Path(filename).suffix.lower()
     media_type = MEDIA_TYPES.get(ext, 'image/jpeg')
+    img_data = base64.standard_b64encode(file_bytes).decode('utf-8')
 
     prompt = """この領収書・レシート画像から経費情報をJSONで抽出してください。
 
@@ -75,22 +85,21 @@ categoryの例:
 routeは交通費のみ（例:品川→熱海）。その他はnull。
 日付不明はnull、金額不明は0。JSONのみ返してください。"""
 
-    # PDFは1ページ目を画像に変換して送信
+    # PDFは最初のページを画像に変換してから送信
     if ext == '.pdf':
         pdf_doc = fitz.open(stream=file_bytes, filetype="pdf")
-        page = pdf_doc[0]
-        mat = fitz.Matrix(2, 2)
+        page = pdf_doc[0]  # 1ページ目
+        mat = fitz.Matrix(2, 2)  # 2倍解像度でレンダリング
         pix = page.get_pixmap(matrix=mat)
         img_bytes = pix.tobytes("png")
         img_data = base64.standard_b64encode(img_bytes).decode('utf-8')
         content_block = {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": img_data}}
         pdf_doc.close()
     else:
-        img_data = base64.standard_b64encode(file_bytes).decode('utf-8')
         content_block = {"type": "image", "source": {"type": "base64", "media_type": media_type, "data": img_data}}
 
     resp = client.messages.create(
-        model="claude-opus-4-6",
+        model="claude-haiku-4-5-20251001",
         max_tokens=512,
         messages=[{"role": "user", "content": [
             content_block,
@@ -171,7 +180,8 @@ st.divider()
 # APIキー入力
 st.subheader("🔑 Anthropic APIキー")
 
-env_key = os.environ.get('ANTHROPIC_API_KEY', '') or (st.secrets.get('ANTHROPIC_API_KEY', '') if hasattr(st, 'secrets') else '')
+# 環境変数（Streamlit Cloudでの secrets 対応）
+env_key = os.environ.get('ANTHROPIC_API_KEY', '') or st.secrets.get('ANTHROPIC_API_KEY', '') if hasattr(st, 'secrets') else ''
 if env_key:
     api_key = env_key
     st.success("✅ APIキーが設定済みです（環境変数）")
@@ -180,6 +190,7 @@ else:
         "APIキーを入力してください",
         type="password",
         placeholder="sk-ant-...",
+        help="[Anthropic Console](https://console.anthropic.com) でAPIキーを取得できます"
     )
 
 st.divider()
@@ -190,6 +201,7 @@ uploaded_files = st.file_uploader(
     "領収書画像・PDFをアップロード（複数選択可）",
     type=['jpg', 'jpeg', 'png', 'gif', 'webp', 'pdf'],
     accept_multiple_files=True,
+    help="対応形式: JPG, PNG, PDF, WEBP, GIF"
 )
 
 if uploaded_files:
@@ -205,6 +217,7 @@ if uploaded_files:
 
 st.divider()
 
+# 処理ボタン
 if st.button("⚡ Excel経費精算書を作成する", disabled=not (api_key and uploaded_files)):
 
     if not TEMPLATE_PATH.exists():
@@ -226,7 +239,7 @@ if st.button("⚡ Excel経費精算書を作成する", disabled=not (api_key an
 
     for i, uploaded_file in enumerate(uploaded_files):
         status_text.text(f"🔍 解析中... {uploaded_file.name} ({i+1}/{len(uploaded_files)})")
-        progress_bar.progress(i / len(uploaded_files))
+        progress_bar.progress((i) / len(uploaded_files))
 
         try:
             file_bytes = uploaded_file.read()
@@ -247,11 +260,12 @@ if st.button("⚡ Excel経費精算書を作成する", disabled=not (api_key an
         except json.JSONDecodeError as e:
             log_lines.append(f"⚠️ {uploaded_file.name}\n   → JSON解析エラー: {e}")
         except Exception as e:
-            log_lines.append(f"❌ {uploaded_file.name}\n   → エラー: {str(e)[:120]}")
+            log_lines.append(f"❌ {uploaded_file.name}\n   → エラー: {str(e)}")
 
     progress_bar.progress(1.0)
     status_text.text("✨ Excel生成中...")
 
+    # 日付ソート
     travel_items.sort(key=lambda x: x.get('date') or '9999-99-99')
     other_items.sort(key=lambda x: x.get('date') or '9999-99-99')
 
@@ -260,11 +274,14 @@ if st.button("⚡ Excel経費精算書を作成する", disabled=not (api_key an
         status_text.empty()
         progress_bar.empty()
 
+        # 結果表示
         st.success(f"✅ 完了！ 旅費交通費: **{len(travel_items)}件** / その他: **{len(other_items)}件**")
 
+        # ログ
         with st.expander("📋 処理ログを見る", expanded=False):
             st.code('\n\n'.join(log_lines), language=None)
 
+        # ダウンロードボタン
         today_str = datetime.now().strftime('%Y%m')
         st.download_button(
             label="📥 Excelファイルをダウンロード",
