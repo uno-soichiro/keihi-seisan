@@ -260,7 +260,16 @@ if st.button("⚡ Excel経費精算書を作成する", disabled=not (api_key an
         except json.JSONDecodeError as e:
             log_lines.append(f"⚠️ {uploaded_file.name}\n   → JSON解析エラー: {e}")
         except Exception as e:
-            log_lines.append(f"❌ {uploaded_file.name}\n   → エラー: {str(e)}")
+            # フルエラーをStreamlit Cloudログに出力
+            full_err = str(e)
+            if hasattr(e, 'body') and e.body:
+                full_err = str(e.body)
+            elif hasattr(e, 'message') and e.message:
+                full_err = e.message
+            import traceback, sys
+            print(f"[FULL_ERROR] {uploaded_file.name}: {repr(full_err)}", file=sys.stderr)
+            traceback.print_exc(file=sys.stderr)
+            log_lines.append(f"❌ {uploaded_file.name}\n   → {full_err}")
 
     progress_bar.progress(1.0)
     status_text.text("✨ Excel生成中...")
@@ -278,8 +287,14 @@ if st.button("⚡ Excel経費精算書を作成する", disabled=not (api_key an
         st.success(f"✅ 完了！ 旅費交通費: **{len(travel_items)}件** / その他: **{len(other_items)}件**")
 
         # ログ
-        with st.expander("📋 処理ログを見る", expanded=False):
-            st.code('\n\n'.join(log_lines), language=None)
+        with st.expander("📋 処理ログを見る", expanded=True):
+            for line in log_lines:
+                if line.startswith('❌'):
+                    st.error(line)
+                elif line.startswith('⚠️'):
+                    st.warning(line)
+                else:
+                    st.success(line)
 
         # ダウンロードボタン
         today_str = datetime.now().strftime('%Y%m')
