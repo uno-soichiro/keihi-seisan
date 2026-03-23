@@ -151,7 +151,7 @@ def write_sheet(ws, items: list, data_start: int, data_end: int, has_route: bool
     ws['D8'] = len(items)
 
 
-def generate_excel(travel_items: list, other_items: list) -> bytes:
+def generate_excel(travel_items: list, other_items: list, person_name: str = '') -> bytes:
     wb = load_workbook(str(TEMPLATE_PATH))
     ws_t = wb['旅費交通費']
     ws_o = wb['その他']
@@ -162,6 +162,10 @@ def generate_excel(travel_items: list, other_items: list) -> bytes:
     today = datetime.now()
     ws_t['D4'] = today
     ws_o['D4'] = today
+
+    if person_name:
+        ws_t['D6'] = person_name
+        ws_o['D6'] = person_name
 
     buf = io.BytesIO()
     wb.save(buf)
@@ -192,6 +196,16 @@ else:
         placeholder="sk-ant-...",
         help="[Anthropic Console](https://console.anthropic.com) でAPIキーを取得できます"
     )
+
+st.divider()
+
+# 精算者選択
+st.subheader("👤 精算者")
+person_name = st.selectbox(
+    "精算者を選択してください",
+    options=["小田崇", "宇野想一郎"],
+    index=0,
+)
 
 st.divider()
 
@@ -260,7 +274,6 @@ if st.button("⚡ Excel経費精算書を作成する", disabled=not (api_key an
         except json.JSONDecodeError as e:
             log_lines.append(f"⚠️ {uploaded_file.name}\n   → JSON解析エラー: {e}")
         except Exception as e:
-            # フルエラーをStreamlit Cloudログに出力
             full_err = str(e)
             if hasattr(e, 'body') and e.body:
                 full_err = str(e.body)
@@ -279,7 +292,7 @@ if st.button("⚡ Excel経費精算書を作成する", disabled=not (api_key an
     other_items.sort(key=lambda x: x.get('date') or '9999-99-99')
 
     try:
-        excel_bytes = generate_excel(travel_items, other_items)
+        excel_bytes = generate_excel(travel_items, other_items, person_name)
         status_text.empty()
         progress_bar.empty()
 
