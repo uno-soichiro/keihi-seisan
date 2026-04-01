@@ -9,7 +9,6 @@ from pathlib import Path
 from openpyxl import load_workbook
 from copy import copy
 import fitz  # PyMuPDF
-
 # ─────────────────────────────────────────────
 # ページ設定
 # ─────────────────────────────────────────────
@@ -64,15 +63,18 @@ MEDIA_TYPES = {
 # ─────────────────────────────────────────────
 # Claude API で領収書を解析
 # ─────────────────────────────────────────────
-def extract_receipt_data(client, file_bytes: bytes, filename: str) -> dict:
+def extract_receipt_data(client, file_bytes: bytes, filename: str) -> list:
     ext = Path(filename).suffix.lower()
     media_type = MEDIA_TYPES.get(ext, 'image/jpeg')
     img_data = base64.standard_b64encode(file_bytes).decode('utf-8')
 
-    prompt = """この領収書・レシート画像から経費情報をJSONで抽出してください。
+    prompt = """この画像に含まれる全ての領収書・レシートから経費情報を抽出してください。
 
-以下のJSON形式のみを返してください（コードブロック不要）:
-{"type":"travel","date":"YYYY-MM-DD","amount":金額,"category":"科目","description":"摘要","route":"経路またはnull"}
+【重要】1枚の画像に複数の領収書・レシートが含まれている場合は、それぞれを個別に抽出してください。
+領収書が1枚だけの場合も含め、必ずJSON配列形式で返してください。
+
+以下のJSON配列形式のみを返してください（コードブロック不要）:
+[{"type":"travel","date":"YYYY-MM-DD","amount":金額,"category":"科目","description":"摘要","route":"経路またはnull"}]
 
 typeの選び方:
 - 電車・新幹線・バス・タクシーなど交通系 → "travel"
@@ -83,7 +85,7 @@ categoryの例:
 - other: 「接待交際費」「会議費」「消耗品費」「宿泊費」「諸経費」
 
 routeは交通費のみ（例:品川→熱海）。その他はnull。
-日付不明はnull、金額不明は0。JSONのみ返してください。"""
+日付不明はnull、金額不明は0。JSON配列のみ返してください。"""
 
     # PDFは最初のページを画像に変換してから送信
     if ext == '.pdf':
@@ -114,10 +116,12 @@ routeは交通費のみ（例:品川→熱海）。その他はnull。
             if part.startswith('json'):
                 part = part[4:].strip()
             try:
-                return json.loads(part)
+                result = json.loads(part)
+                return result if isinstance(result, list) else [result]
             except Exception:
                 continue
-    return json.loads(text)
+    result = json.loads(text)
+    return result if isinstance(result, list) else [result]
 
 
 # ─────────────────────────────────────────────
@@ -257,20 +261,18 @@ if st.button("⚡ Excel経費精算書を作成する", disabled=not (api_key an
 
         try:
             file_bytes = uploaded_file.read()
-            data = extract_receipt_data(client, file_bytes, uploaded_file.name)
-
-            amt = data.get('amount', 0)
-            amt_str = f"¥{int(amt):,}" if isinstance(amt, (int, float)) and amt else "¥0"
-            log_line = f"✅ {uploaded_file.name}\n   → {data.get('date', '日付不明')} | {data.get('category', '不明')} | {amt_str}"
-            if data.get('route'):
-                log_line += f" | {data.get('route')}"
-            log_lines.append(log_line)
-
-            if data.get('type') == 'travel':
-                travel_items.append(data)
-            else:
-                other_items.append(data)
-
+            items = extract_receipt_data(client, file_bytes, uploaded_file.name)
+            for data in items:
+                amt = data.get('amount', 0)
+                amt_str = f"¥{int(amt):,}" if isinstance(amt, (int, float)) and amt else "¥0"
+                log_line = f"✅ {uploaded_file.name}\n   → {data.get('date', '日付不明')} | {data.get('category', '不明')} | {amt_str}"
+                if data.get('route'):
+                    log_line += f" | {data.get('route')}"
+                log_lines.append(log_line)
+                if data.get('type') == 'travel':
+                    travel_items.append(data)
+                else:
+                    other_items.append(data)
         except json.JSONDecodeError as e:
             log_lines.append(f"⚠️ {uploaded_file.name}\n   → JSON解析エラー: {e}")
         except Exception as e:
