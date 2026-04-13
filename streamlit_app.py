@@ -222,21 +222,33 @@ uploaded_files = st.file_uploader(
     help="対応形式: JPG, PNG, PDF, WEBP, GIF"
 )
 
+# ファイルサイズ上限（バイト単位） - 10MB
+MAX_FILE_SIZE_MB = 10
+MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
+
 if uploaded_files:
     st.write(f"📁 **{len(uploaded_files)} ファイル**が選択されています:")
     cols = st.columns(min(len(uploaded_files), 4))
+    oversized_files = []
     for i, f in enumerate(uploaded_files):
         with cols[i % 4]:
             ext = Path(f.name).suffix.lower()
-            if ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp']:
+            file_size = f.size
+            if file_size > MAX_FILE_SIZE_BYTES:
+                oversized_files.append((f.name, file_size))
+                st.error(f"⚠️ `{f.name}`\nサイズ超過 ({file_size / 1024 / 1024:.1f}MB) — {MAX_FILE_SIZE_MB}MB以下にしてください")
+            elif ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp']:
                 st.image(f, caption=f.name, use_container_width=True)
             else:
                 st.markdown(f"📄 `{f.name}`")
+    if oversized_files:
+        st.warning(f"🚫 {len(oversized_files)}件のファイルがサイズ上限({MAX_FILE_SIZE_MB}MB)を超えています。処理を実行する前に、これらのファイルを削除してください。")
 
 st.divider()
 
 # 処理ボタン
-if st.button("⚡ Excel経費精算書を作成する", disabled=not (api_key and uploaded_files)):
+oversized_files = [f for f in (uploaded_files or []) if f.size > MAX_FILE_SIZE_BYTES]
+if st.button("⚡ Excel経費精算書を作成する", disabled=not (api_key and uploaded_files) or bool(oversized_files)):
 
     if not TEMPLATE_PATH.exists():
         st.error("テンプレートファイル (template.xlsx) が見つかりません。")
