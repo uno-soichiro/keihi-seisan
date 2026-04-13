@@ -91,11 +91,11 @@ routeは交通費のみ（例:品川→熱海）。その他はnull。
     if ext == '.pdf':
         pdf_doc = fitz.open(stream=file_bytes, filetype="pdf")
         page = pdf_doc[0]  # 1ページ目
-        mat = fitz.Matrix(2, 2)  # 2倍解像度でレンダリング
+        mat = fitz.Matrix(1.5, 1.5)  # サイズ削減のため解像度を下げる
         pix = page.get_pixmap(matrix=mat)
-        img_bytes = pix.tobytes("png")
+        img_bytes = pix.tobytes("jpeg", jpg_quality=85)  # PNGよりJPEGの方が大幅に小さい
         img_data = base64.standard_b64encode(img_bytes).decode('utf-8')
-        content_block = {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": img_data}}
+        content_block = {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": img_data}}
         pdf_doc.close()
     else:
         content_block = {"type": "image", "source": {"type": "base64", "media_type": media_type, "data": img_data}}
