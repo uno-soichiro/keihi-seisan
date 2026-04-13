@@ -128,6 +128,13 @@ routeは交通費のみ（例:品川→熱海）。その他はnull。
 # Excel生成
 # ─────────────────────────────────────────────
 def write_sheet(ws, items: list, data_start: int, data_end: int, has_route: bool):
+    # 項目数がテンプレートの行数を超える場合、合計行の前に行を挿入してずらす
+    available = data_end - data_start + 1
+    if len(items) > available:
+        extra = len(items) - available
+        ws.insert_rows(data_end + 1, extra)
+        data_end += extra
+
     for r in range(data_start, data_end + 1):
         for c in range(1, 12):
             ws.cell(row=r, column=c).value = None
@@ -142,16 +149,13 @@ def write_sheet(ws, items: list, data_start: int, data_end: int, has_route: bool
                 ws.cell(row=row, column=2).number_format = 'm/d'
             except Exception:
                 ws.cell(row=row, column=2).value = item['date']
-
         amt = item.get('amount', 0)
         ws.cell(row=row, column=3).value = amt if amt else None
         ws.cell(row=row, column=3).number_format = '[$¥-411]#,##0'
         ws.cell(row=row, column=4).value = item.get('category', '')
         ws.cell(row=row, column=5).value = item.get('description', '')
-
         if has_route:
             ws.cell(row=row, column=8).value = item.get('route') or ''
-
     ws['D8'] = len(items)
 
 
