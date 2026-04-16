@@ -129,7 +129,10 @@ JSON配列のみ返してください。"""
 # ─────────────────────────────────────────────
 # Excel生成
 # ─────────────────────────────────────────────
-def write_sheet(ws, items: list, data_start: int, data_end: int, has_route: bool):
+def write_sheet(ws, items: list, data_start: int, data_end: int, has_route: bool, count_cell: str = None):
+    import re
+    original_data_end = data_end
+
     # 項目数がテンプレートの行数を超える場合、合計行の前に行を挿入してずらす
     available = data_end - data_start + 1
     if len(items) > available:
@@ -137,14 +140,15 @@ def write_sheet(ws, items: list, data_start: int, data_end: int, has_route: bool
         ws.insert_rows(data_end + 1, extra)
         data_end += extra
 
+    # データ行をクリア
     for r in range(data_start, data_end + 1):
         for c in range(1, 12):
             ws.cell(row=r, column=c).value = None
 
+    # データ書き込み
     for i, item in enumerate(items):
         row = data_start + i
-        ws.cell(row=row, column=1).value = '=ROW()-12'
-
+        ws.cell(row=row, column=1).value = f'=ROW()-{data_start - 1}'
         if item.get('date'):
             try:
                 ws.cell(row=row, column=2).value = datetime.strptime(item['date'], '%Y-%m-%d')
@@ -158,16 +162,33 @@ def write_sheet(ws, items: list, data_start: int, data_end: int, has_route: bool
         ws.cell(row=row, column=5).value = item.get('description', '')
         if has_route:
             ws.cell(row=row, column=8).value = item.get('route') or ''
-    ws['D8'] = len(items)
 
+    # 行挿入でSUM関数の範囲がズレた場合、新しいdata_endまで拡張する
+    if data_end > original_data_end:
+        pattern = re.compile(
+            r'([A-Za-z]+)' + str(data_start) + r':([A-Za-z]+)' + str(original_data_end),
+        )
+        for row_cells in ws.iter_rows():
+            for cell in row_cells:
+                if cell.value and isinstance(cell.value, str) and 'SUM' in cell.value.upper():
+                    new_val = pattern.sub(
+                        lambda m: f'{m.group(1)}{data_start}:{m.group(2)}{data_end}',
+                        cell.value
+                    )
+                    if new_val != cell.value:
+                        cell.value = new_val
+
+    # 件数セルへの書き込み（シートごとに指定）
+    if count_cell:
+        ws[count_cell] = len(items)
 
 def generate_excel(travel_items: list, other_items: list, person_name: str = '') -> bytes:
     wb = load_workbook(str(TEMPLATE_PATH))
     ws_t = wb['旅費交通費']
     ws_o = wb['その他']
 
-    write_sheet(ws_t, travel_items, 13, 26, True)
-    write_sheet(ws_o, other_items, 13, 19, False)
+    write_sheet(ws_t, travel_items, 13, 26, True, count_cell='D8')
+    write_sheet(ws_o, other_items, 13, 19, False, count_cell=None)
 
     today = datetime.now()
     ws_t['D4'] = today
@@ -181,7 +202,6 @@ def generate_excel(travel_items: list, other_items: list, person_name: str = '')
     wb.save(buf)
     buf.seek(0)
     return buf.read()
-
 
 # ─────────────────────────────────────────────
 # UI
