@@ -187,7 +187,7 @@ def generate_excel(travel_items: list, other_items: list, person_name: str = '')
                 count_cell='D8', sum_offset=1, billing_cell='D10')
     # その他: data=13-19, 合計=C21(offset=2), 請求金額=D10(=C21-D23)
     write_sheet(ws_o, other_items, 13, 19, False,
-                count_cell=None, sum_offset=2, billing_cell='D10')
+                count_cell='D8', sum_offset=2, billing_cell='D10')
 
     today = datetime.now()
     ws_t['D4'] = today
