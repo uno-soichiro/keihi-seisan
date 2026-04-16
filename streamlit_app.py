@@ -129,14 +129,14 @@ JSON配列のみ返してください。"""
 # ─────────────────────────────────────────────
 # Excel生成
 # ─────────────────────────────────────────────
-def write_sheet(ws, items: list, data_start: int, data_end: int, has_route: bool, count_cell: str = None):
-    import re
+def write_sheet(ws, items: list, data_start: int, data_end: int, has_route: bool,
+                count_cell: str = None, sum_offset: int = 1, billing_cell: str = None):
     original_data_end = data_end
 
     # 項目数がテンプレートの行数を超える場合、合計行の前に行を挿入してずらす
     available = data_end - data_start + 1
-    if len(items) > available:
-        extra = len(items) - available
+    extra = max(0, len(items) - available)
+    if extra > 0:
         ws.insert_rows(data_end + 1, extra)
         data_end += extra
 
@@ -163,22 +163,17 @@ def write_sheet(ws, items: list, data_start: int, data_end: int, has_route: bool
         if has_route:
             ws.cell(row=row, column=8).value = item.get('route') or ''
 
-    # 行挿入でSUM関数の範囲がズレた場合、新しいdata_endまで拡張する
-    if data_end > original_data_end:
-        pattern = re.compile(
-            r'([A-Za-z]+)' + str(data_start) + r':([A-Za-z]+)' + str(original_data_end),
-        )
-        for row_cells in ws.iter_rows():
-            for cell in row_cells:
-                if cell.value and isinstance(cell.value, str) and 'SUM' in cell.value.upper():
-                    new_val = pattern.sub(
-                        lambda m: f'{m.group(1)}{data_start}:{m.group(2)}{data_end}',
-                        cell.value
-                    )
-                    if new_val != cell.value:
-                        cell.value = new_val
+    # 行挿入があった場合、SUM式と請求金額式を明示的に正しい行番号で書き直す
+    if extra > 0:
+        sum_row = data_end + sum_offset
+        # SUM式（合計行）を書き直す
+        ws.cell(row=sum_row, column=3).value = f'=SUM(C{data_start}:C{data_end})'
+        # 請求金額（D10）= 合計 - 仮払精算金額 を書き直す
+        # 仮払精算金額は合計行から+2行下にある
+        if billing_cell:
+            deduct_row = sum_row + 2
+            ws[billing_cell].value = f'=C{sum_row}-D{deduct_row}'
 
-    # 件数セルへの書き込み（シートごとに指定）
     if count_cell:
         ws[count_cell] = len(items)
 
@@ -187,8 +182,12 @@ def generate_excel(travel_items: list, other_items: list, person_name: str = '')
     ws_t = wb['旅費交通費']
     ws_o = wb['その他']
 
-    write_sheet(ws_t, travel_items, 13, 26, True, count_cell='D8')
-    write_sheet(ws_o, other_items, 13, 19, False, count_cell=None)
+    # 旅費交通費: data=13-26, 合計=C27(offset=1), 請求金額=D10(=C27-D29)
+    write_sheet(ws_t, travel_items, 13, 26, True,
+                count_cell='D8', sum_offset=1, billing_cell='D10')
+    # その他: data=13-19, 合計=C21(offset=2), 請求金額=D10(=C21-D23)
+    write_sheet(ws_o, other_items, 13, 19, False,
+                count_cell=None, sum_offset=2, billing_cell='D10')
 
     today = datetime.now()
     ws_t['D4'] = today
