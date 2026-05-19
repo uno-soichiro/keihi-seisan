@@ -76,15 +76,16 @@ def extract_receipt_data(client, file_bytes: bytes, filename: str) -> list:
 以下のJSON配列形式のみを返してください（コードブロック不要）:
 [{"type":"travel","date":"YYYY-MM-DD","amount":金額,"category":"科目","description":"摘要","route":"経路またはnull"}]
 
-typeの選び方:
-- 電車・新幹線・バス・タクシーなど交通系 → "travel"
-- 接待・会食・備品・宿泊など → "other"
+【typeの判定ルール】（最重要。categoryより優先して判断すること）
+- 電車・新幹線・バス・タクシー・交通系IC・高速道路など「移動」に関するもの → 必ず "travel"
+- 飲食・接待・宿泊・備品・消耗品・その他サービスなど「移動以外」 → "other"
+- 判断に迷う場合は "other" とする
 
-categoryの例:
-- travel: 「旅費」(新幹線・特急など)、「交通費」(電車・バス・タクシー)
-- other: 「接待交際費」「会議費」「消耗品費」「宿泊費」「諸経費」
+【categoryの例】
+- typeがtravelの場合: 新幹線・特急・飛行機 → 「旅費」／電車・バス・タクシー → 「交通費」
+- typeがotherの場合: 「接待交際費」「会議費」「消耗品費」「宿泊費」「諸経費」など
 
-routeは交通費のみ（例:品川→熱海）。その他はnull。
+routeはtype=travelのみ記入（例:品川→熱海）。type=otherはnull。
 日付不明はnull、金額不明は0。
 品目・説明が不明な場合はdescriptionを「不明」とする。科目が判断できない場合はcategoryを「諸経費」とする。
 JSON配列のみ返してください。"""
