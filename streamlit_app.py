@@ -86,6 +86,11 @@ def extract_receipt_data(client, file_bytes: bytes, filename: str) -> list:
 - typeがotherの場合: 「接待交際費」「会議費」「消耗品費」「宿泊費」「諸経費」など
 
 routeはtype=travelのみ記入（例:品川→熱海）。type=otherはnull。
+
+【日付の特殊ルール】（以下の領収書は日付の使用フィールドが異なる）
+- Sride（ライドシェア）の領収書: 「発行日」ではなく「決済日」をdateとして使用する
+- スマートEX（新幹線）の領収書: 「購入日」ではなく「乗車日」をdateとして使用する
+
 日付不明はnull、金額不明は0。
 品目・説明が不明な場合はdescriptionを「不明」とする。科目が判断できない場合はcategoryを「諸経費」とする。
 JSON配列のみ返してください。"""
