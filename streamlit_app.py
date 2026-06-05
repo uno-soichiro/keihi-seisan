@@ -88,7 +88,9 @@ def extract_receipt_data(client, file_bytes: bytes, filename: str) -> list:
 routeはtype=travelのみ記入（例:品川→熱海）。type=otherはnull。
 
 【日付ルール】
-- type=travelの場合: 「乗車日」「乗車日時」「利用日」「決済日」「搭乗日」など実際に移動・乗車した日付をdateとする。「発行日」「購入日」「予約日」は使わない。
+- type=travelの場合: 「乗車日」「乗車日時」「利用日」「決済日」「搭乗日」など実際に移動・乗車した日付をdateとする。「発行日」「購入日」「予約日」は絶対に使わない。
+  - 特にS.RIDE・Srideの領収書: 上部の「発行日(Issued date)」は無視し、詳細欄の「決済日(Settlement date)」をdateとして使用すること。
+  - スマートEXの領収書: 「購入日」は無視し、「乗車日」をdateとして使用すること。
 - type=otherの場合: 領収書に記載の日付（発行日・利用日など）をそのままdateとする。
 - 日付不明はnull、金額不明は0。
 品目・説明が不明な場合はdescriptionを「不明」とする。科目が判断できない場合はcategoryを「諸経費」とする。
