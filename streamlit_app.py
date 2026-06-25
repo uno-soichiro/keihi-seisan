@@ -85,7 +85,7 @@ def extract_receipt_data(client, file_bytes: bytes, filename: str) -> list:
 - typeがtravelの場合: 新幹線・特急・飛行機 → 「旅費」／電車・バス・タクシー → 「交通費」
 - typeがotherの場合: 「接待交際費」「会議費」「消耗品費」「宿泊費」「諸経費」など
 
-routeはtype=travelのみ記入（例:品川→熱海）。type=otherはnull。
+routeはtype=travelのみ記入（例:品川→熱海）。type=otherはnull。経路（出発地→到着地）はroute欄のみに入れ、description（摘要）には絶対に含めないこと。descriptionは「航空券」「新幹線」「特急券」「タクシー」など券種・品目名のみを簡潔に記載する。
 
 【日付ルール】
 - type=travelの場合: 実際に搭乗・乗車・利用した日付をdateとする。「発行日」「購入日」「予約日」「発券日」「発売日」は絶対に使わない。航空券（飛行機）は領収書の購入日・発行日・決済日が搭乗日と一致しないことが多いため、旅程（itinerary）欄に記載の「搭乗日」「出発日」を必ずdateとし、往復・複数区間がある場合は最初の搭乗日（出発日）を使う。新幹線・特急券・乗車券は券面の「乗車日」「利用日」をdateとする。タクシー・交通系ICなどは「利用日（決済日）」をdateとする。
