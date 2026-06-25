@@ -313,7 +313,7 @@ if st.button("⚡ Excel経費精算書を作成する", disabled=not (api_key an
                 if data.get('route'):
                     log_line += f" | {data.get('route')}"
                 log_lines.append(log_line)
-                if data.get('type') == 'travel':
+                if data.get('type') == 'travel' or data.get('route') or '旅費' in (data.get('category') or '') or '交通費' in (data.get('category') or ''):
                     travel_items.append(data)
                 else:
                     other_items.append(data)
