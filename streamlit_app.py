@@ -239,7 +239,7 @@ st.divider()
 st.subheader("👤 精算者")
 person_name = st.selectbox(
     "精算者を選択してください",
-    options=["小田崇", "宇野想一郎"],
+    options=["小田崇", "宇野想一郎", "戎空"],
     index=0,
 )
 
