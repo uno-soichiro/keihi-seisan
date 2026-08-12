@@ -4,6 +4,8 @@ import base64
 import json
 import os
 import io
+import re
+import zipfile
 from datetime import datetime
 from pathlib import Path
 from openpyxl import load_workbook
@@ -209,6 +211,65 @@ def generate_excel(travel_items: list, other_items: list, person_name: str = '')
     buf.seek(0)
     return buf.read()
 
+# ---- rename & zip ----
+def _sanitize(name: str) -> str:
+    """ファイル名に使えない文字を置換（カンマは仕様上残す）"""
+    name = (name or '').strip()
+    name = re.sub(r'[\\/:*?"<>|\r\n\t]', '_', name)
+    return name or '不明'
+
+
+def build_zip(travel_items: list, other_items: list, src_files: dict,
+              excel_bytes: bytes, excel_name: str) -> bytes:
+    """元ファイルをExcelのNoに合わせてリネームしたコピー＋ExcelをZIP化"""
+    groups = {}  # src_idx -> list[(sheet_label, no, desc)]
+    for it in travel_items:
+        if '_src' in it:
+            groups.setdefault(it['_src'], []).append(
+                ('旅費交通費', it.get('_no'), it.get('description') or '不明'))
+    for it in other_items:
+        if '_src' in it:
+            groups.setdefault(it['_src'], []).append(
+                ('その他', it.get('_no'), it.get('description') or '不明'))
+
+    used = {}
+    out = []
+    for idx in sorted(src_files.keys()):
+        info = src_files[idx]
+        ext = Path(info['name']).suffix.lower()
+        entries = groups.get(idx, [])
+        if not entries:
+            base = '未分類_' + _sanitize(Path(info['name']).stem)
+        else:
+            by_sheet = {}
+            for sheet, no, desc in entries:
+                by_sheet.setdefault(sheet, []).append((no, desc))
+            segs = []
+            for sheet in ['旅費交通費', 'その他']:
+                if sheet not in by_sheet:
+                    continue
+                lst = sorted(by_sheet[sheet], key=lambda x: (x[0] is None, x[0]))
+                nos = ','.join(str(n) for n, _ in lst if n is not None)
+                desc = _sanitize(lst[0][1]) + ('他' if len(lst) > 1 else '')
+                segs.append(f"{sheet}{nos}_{desc}")
+            base = '_'.join(segs)
+        name = base + ext
+        if name in used:
+            used[name] += 1
+            name = f"{base}({used[name]}){ext}"
+        else:
+            used[name] = 0
+        out.append((name, info['bytes']))
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr(excel_name, excel_bytes)
+        for name, data in out:
+            zf.writestr(name, data)
+    buf.seek(0)
+    return buf.read()
+
+
 # ─────────────────────────────────────────────
 # UI
 # ─────────────────────────────────────────────
@@ -295,6 +356,7 @@ if st.button("⚡ Excel経費精算書を作成する", disabled=not (api_key an
     travel_items = []
     other_items = []
     log_lines = []
+    src_files = {}  # index -> {'name','bytes'}  リネーム用に元ファイルを保持
 
     progress_bar = st.progress(0)
     status_text = st.empty()
@@ -305,6 +367,7 @@ if st.button("⚡ Excel経費精算書を作成する", disabled=not (api_key an
 
         try:
             file_bytes = uploaded_file.read()
+            src_files[i] = {'name': uploaded_file.name, 'bytes': file_bytes}
             items = extract_receipt_data(client, file_bytes, uploaded_file.name)
             for data in items:
                 amt = data.get('amount', 0)
@@ -313,6 +376,7 @@ if st.button("⚡ Excel経費精算書を作成する", disabled=not (api_key an
                 if data.get('route'):
                     log_line += f" | {data.get('route')}"
                 log_lines.append(log_line)
+                data['_src'] = i
                 if data.get('type') == 'travel' or data.get('route') or '旅費' in (data.get('category') or '') or '交通費' in (data.get('category') or ''):
                     travel_items.append(data)
                 else:
@@ -337,6 +401,12 @@ if st.button("⚡ Excel経費精算書を作成する", disabled=not (api_key an
     travel_items.sort(key=lambda x: x.get('date') or '9999-99-99')
     other_items.sort(key=lambda x: x.get('date') or '9999-99-99')
 
+    # ソート確定後にExcel上のNoを割り当て（No = シート内の並び順）
+    for idx, it in enumerate(travel_items):
+        it['_no'] = idx + 1
+    for idx, it in enumerate(other_items):
+        it['_no'] = idx + 1
+
     try:
         excel_bytes = generate_excel(travel_items, other_items, person_name)
         status_text.empty()
@@ -355,12 +425,21 @@ if st.button("⚡ Excel経費精算書を作成する", disabled=not (api_key an
                 else:
                     st.success(line)
 
-        # ダウンロードボタン
+        # ダウンロード（Excel＋リネーム済領収書をZIPで）
         today_str = datetime.now().strftime('%Y%m')
+        excel_name = f"{today_str}経費精算.xlsx"
+        zip_bytes = build_zip(travel_items, other_items, src_files, excel_bytes, excel_name)
         st.download_button(
-            label="📥 Excelファイルをダウンロード",
+            label="📥 Excel＋領収書を一括ダウンロード（ZIP）",
+            data=zip_bytes,
+            file_name=f"{today_str}経費精算.zip",
+            mime="application/zip",
+        )
+        st.caption("ZIP内の領収書は「タブ名＋No_摘要」にリネーム済（例: 旅費交通費1_新幹線）")
+        st.download_button(
+            label="📄 Excelのみダウンロード",
             data=excel_bytes,
-            file_name=f"{today_str}経費精算.xlsx",
+            file_name=excel_name,
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
 
